@@ -1,9 +1,11 @@
-
 # Spotify Stats Tracker
 
 A Windows app that tracks songs you listen to on Spotify,
 shows album art and has playback controls, and keeps a local database of
 your listening history. No connected account required to get started, just open Spotify and run the app.
+
+<img width="1013" height="799" alt="Screenshot 2026-07-16 193323" src="https://github.com/user-attachments/assets/a6c981aa-19db-4daf-ad75-f9c9f60d682d" />
+
 
 
 ## Quick start for exe
