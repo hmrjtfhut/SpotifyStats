@@ -87,8 +87,40 @@ class SpotifyListener:
         except Exception: pass
         return False
 
+    def _has_api_auth(self):
+        """Fast, non-blocking check: does a token file exist on disk?
+
+        We use a plain file-existence test rather than has_cached_auth() so
+        that we never make an HTTP call during the snapshot hot-path.  The API
+        itself handles silent token refresh the next time it makes a real
+        request; here we just need to know whether the user has ever
+        authenticated so we can pick the right source priority.
+        """
+        return self.spotify_api.token_path.exists()
+
     def get_snapshot(self):
-        # Priority 1: Windows media session API (has position, art, full controls)
+        """Return a snapshot of current playback.
+
+        Source priority
+        ───────────────
+        When a Spotify account IS connected
+            1. Spotify Web API — exact position, album art, shuffle/repeat,
+               covers desktop AND phone/other devices from one source.
+               WinRT / window-title are intentionally skipped: they could
+               return stale desktop data while you're listening on your phone.
+
+        When NO account is connected
+            1. WinRT (winsdk) — exact position, art, controls, no login needed.
+            2. Window title (win32gui + Spotify.exe PID lock) — song + artist
+               only, but works even without winsdk installed.
+        """
+        if self._has_api_auth():
+            # Account connected: API is the single source of truth.
+            # It covers both local and remote playback with exact timing, so
+            # there's no benefit in also polling WinRT or the window title.
+            return self._filter_ignored(self._get_remote_snapshot())
+
+        # No account: prefer the fast, exact local WinRT path.
         if HAS_WINSDK:
             try:
                 snap = asyncio.run(self._get_local_snapshot_async())
@@ -97,14 +129,13 @@ class SpotifyListener:
             if snap is not None:
                 return self._filter_ignored(snap)
 
-        # Priority 2: Spotify window title (no account needed, no position/art,
-        # but works when winsdk is missing/broken and Spotify desktop is open)
+        # Last resort: read the Spotify window title directly.
+        # No position/art, but enough to track songs without any account or winsdk.
         win_snap = self._get_window_title_snapshot()
         if win_snap is not None:
             return self._filter_ignored(win_snap)
 
-        # Priority 3: Spotify Web API (needs account; covers phone/remote playback)
-        return self._filter_ignored(self._get_remote_snapshot())
+        return self._filter_ignored(dict(IDLE_SNAPSHOT, connected=self.is_spotify_running()))
 
     def _get_window_title_snapshot(self):
         """Read the currently playing track from the Spotify desktop window title.
