@@ -34,6 +34,9 @@ class SpotifyTracker:
         self._last_position = None
         # Source of the currently tracked song ('local', 'remote', 'window_title', …)
         self._active_source = None
+        # Album art URL/bytes captured from the snapshot when the song started,
+        # forwarded to the database once the play is recorded.
+        self._active_album_art = None
         # Crossfade compensation (seconds). When using window-title tracking the
         # song title flips to the next track at the START of the crossfade, so we
         # would under-count the outgoing song by up to crossfade_sec seconds.
@@ -116,13 +119,16 @@ class SpotifyTracker:
                 if self._active_source == "window_title" and self.crossfade_sec > 0:
                     outgoing_listened += float(self.crossfade_sec)
                 if outgoing_listened >= self._play_threshold(prev_dur):
-                    self._record_play(prev_song, prev_artist, outgoing_listened)
+                    self._record_play(prev_song, prev_artist, outgoing_listened, self._active_album_art)
                     self._counted = True
 
             # Reset for the incoming song
             self._active_key = key
             self._active_source = snapshot.get("source", "none")
             self._active_duration_sec = float(snapshot.get("duration_sec") or 0.0)
+            # Only the Web API snapshot carries a real URL we can store; WinRT
+            # gives raw thumbnail bytes (not a stable URL) so we don't persist those.
+            self._active_album_art = snapshot.get("album_art_url")
             self._listened_seconds = 0.0
             self._counted = False
             self._last_position = position
@@ -142,7 +148,7 @@ class SpotifyTracker:
             if not self._counted:
                 prev_dur = float(self._active_duration_sec or 0.0)
                 if self._listened_seconds >= self._play_threshold(prev_dur):
-                    self._record_play(song, artist, self._listened_seconds)
+                    self._record_play(song, artist, self._listened_seconds, self._active_album_art)
             self._listened_seconds = 0.0
             self._counted = False
 
@@ -157,17 +163,25 @@ class SpotifyTracker:
             return max(15.0, min(duration_sec * 0.5, 240.0))
         return 30.0
 
-    def _record_play(self, song, artist, listened_seconds):
+    def _record_play(self, song, artist, listened_seconds, album_art_url=None):
         try:
             # Store actual time listened, not the full track length.
             # Skip at 1:00 of a 1:30 song -> credits 60s, not 90s.
             duration = int(round(listened_seconds))
-            self.db.add_or_update_song(song, artist, duration=duration, play_increment=1)
+            self.db.add_or_update_song(song, artist, duration=duration, play_increment=1,
+                                       album_art_url=album_art_url)
             for name in self._split_artists(artist):
                 self.db.add_or_update_artist(name, duration=duration, play_increment=1)
             self.db.add_listen_history(song, artist, duration)
             self._stats_dirty = True
             print(f"[Tracker] Counted play: {song} by {artist} ({duration}s listened)")
+            if self.ui_callback:
+                # Lets the History tab refresh immediately if it's open,
+                # rather than waiting for the next periodic stats refresh.
+                try:
+                    self.ui_callback("history_changed", None)
+                except Exception:
+                    pass
         except Exception as exc:
             print(f"[Tracker] Error recording play: {exc}")
 
@@ -197,7 +211,11 @@ class SpotifyTracker:
         if display_song and display_artist:
             stats = self.db.get_song_stats((display_song, display_artist))
             if stats:
-                _, _, plays, duration, _ = stats
+                # Index instead of unpacking a fixed tuple length — get_song_stats
+                # may return extra trailing columns (e.g. album_art_url) depending
+                # on the database schema version, and indexing is resilient to that.
+                plays = stats[2]
+                duration = stats[3]
 
         if song and artist:
             playback_state = "playing" if snapshot.get("is_playing") else "paused_closed"
