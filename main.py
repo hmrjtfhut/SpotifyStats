@@ -4,6 +4,7 @@ import sys
 import os
 import argparse
 import json
+import threading
 from pathlib import Path
 import logging
 
@@ -36,6 +37,8 @@ class SpotifyStatsApp:
         self.ui.crossfade_var.set(saved_cf)
         self.tracker.crossfade_sec = saved_cf
 
+        self._last_seen_artist = None
+
         self.tray = MinimizeToTray(root, "Spotify Stats Tracker")
         self.root.bind("<Unmap>", self.tray.on_window_minimize)
         self.ui.hide_button.config(command=self.tray.minimize_to_tray)
@@ -43,6 +46,7 @@ class SpotifyStatsApp:
 
         self._setup_window()
         self.root.after(800, self._maybe_show_spotify_setup)
+        self.root.after(4000, self._maybe_backfill_images)
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     # ------------------------------------------------------------------
@@ -111,6 +115,31 @@ class SpotifyStatsApp:
             self.tracker.crossfade_sec = seconds
             self.app_settings["crossfade_sec"] = seconds
             self._save_settings()
+            return
+
+        if action == "fetch_artist_image":
+            # Requested by the artist-detail popup when no cached image URL
+            # exists yet. Only produces a result when a Spotify account is
+            # connected (the Web API is the only source of artist images).
+            artist_name = (data or {}).get("artist")
+            callback = (data or {}).get("callback")
+            if not artist_name:
+                return
+
+            def worker():
+                url = None
+                try:
+                    url = self.ui._images.get_artist_image_url(
+                        self.tracker.listener.spotify_api, artist_name
+                    )
+                    if url:
+                        self.tracker.db.set_artist_image(artist_name, url)
+                except Exception as e:
+                    print(f"[App] Artist image fetch error: {e}")
+                if callback:
+                    self.root.after(0, lambda: callback(url))
+
+            threading.Thread(target=worker, daemon=True).start()
             return
 
     # ------------------------------------------------------------------
@@ -215,6 +244,10 @@ class SpotifyStatsApp:
                     playback=data.get("playback"),
                     playback_state=data.get("playback_state", "idle"),
                 )
+                artist = data.get("artist")
+                if artist and artist != self._last_seen_artist:
+                    self._last_seen_artist = artist
+                    self._maybe_prefetch_artist_image(artist)
             elif update_type == "top_songs":
                 self.ui.update_top_songs(data)
             elif update_type == "top_artists":
@@ -223,8 +256,72 @@ class SpotifyStatsApp:
                 self.ui.update_totals(
                     data["total_songs"], data["total_minutes"], data.get("total_artists", 0)
                 )
+            elif update_type == "history_changed":
+                self.ui.notify_history_changed()
         except Exception as e:
             print(f"[App] UI update error ({update_type}): {e}")
+
+    def _maybe_prefetch_artist_image(self, artist_name):
+        """Fire-and-forget: if this artist has no cached image yet and a
+        Spotify account is connected, fetch and store one in the background
+        so the Top Artists tab shows real artwork sooner rather than later."""
+        try:
+            existing = self.tracker.db.get_artist_stats(artist_name)
+            if existing and len(existing) > 4 and existing[4]:
+                return  # already have an image cached
+        except Exception:
+            pass
+
+        def worker():
+            try:
+                url = self.ui._images.get_artist_image_url(
+                    self.tracker.listener.spotify_api, artist_name
+                )
+                if url:
+                    self.tracker.db.set_artist_image(artist_name, url)
+            except Exception as e:
+                print(f"[App] Artist image prefetch error: {e}")
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _maybe_backfill_images(self):
+        """One-time background sweep, run shortly after startup, that finds
+        every song/artist already in the library missing cover art and
+        fetches it — rather than only discovering art reactively as songs
+        happen to play. No-ops entirely if no Spotify account is connected,
+        since the Web API is the only source of search-by-name lookups."""
+        try:
+            if not self.tracker.listener.spotify_api.has_cached_auth():
+                return
+        except Exception:
+            return
+
+        def worker():
+            try:
+                song_result = self.ui._images.backfill_missing_song_art(
+                    self.tracker.listener.spotify_api, self.tracker.db, limit=500
+                )
+                artist_result = self.ui._images.backfill_missing_artist_images(
+                    self.tracker.listener.spotify_api, self.tracker.db, limit=300
+                )
+                print(f"[App] Image backfill done: "
+                      f"{song_result.get('found', 0)} song(s), "
+                      f"{artist_result.get('found', 0)} artist(s) found")
+                if song_result.get("found") or artist_result.get("found"):
+                    self.root.after(0, self._refresh_top_lists_after_backfill)
+            except Exception as e:
+                print(f"[App] Image backfill error: {e}")
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _refresh_top_lists_after_backfill(self):
+        """Re-render Top Songs / Top Artists so newly-found art appears
+        without requiring the user to switch tabs or restart the app."""
+        try:
+            self.ui.update_top_songs(self.tracker.db.get_all_songs(limit=25))
+            self.ui.update_top_artists(self.tracker.db.get_all_artists(limit=25))
+        except Exception as e:
+            print(f"[App] Post-backfill refresh error: {e}")
 
     # ------------------------------------------------------------------
     # Erase data
