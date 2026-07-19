@@ -5,7 +5,13 @@ shows album art and has playback controls, and keeps a local database of
 your listening history. No connected account required to get started, just open Spotify and run the app.
 
 # Images
-<img width="1013" height="799" alt="Screenshot 2026-07-16 193323" src="https://github.com/user-attachments/assets/a6c981aa-19db-4daf-ad75-f9c9f60d682d" />
+
+<img width="1067" height="834" alt="image" src="https://github.com/user-attachments/assets/146e738a-fcdb-4655-b90c-8e35a3572f84" />
+<img width="613" height="478" alt="image" src="https://github.com/user-attachments/assets/ceb441a8-c30a-4caf-95be-32466b5e92cd" />
+<img width="613" height="470" alt="image" src="https://github.com/user-attachments/assets/5085e4f7-e7db-4e3d-8e3a-e65fa4efba7a" />
+<img width="609" height="471" alt="image" src="https://github.com/user-attachments/assets/7c63e2a6-66f7-4621-b82d-e79cce7cf65c" />
+<img width="557" height="614" alt="image" src="https://github.com/user-attachments/assets/319d30e3-b6ef-4b9d-8a51-43a7c3390b3e" />
+<img width="508" height="548" alt="image" src="https://github.com/user-attachments/assets/027491d2-9601-4319-8733-9604e00b5598" />
 
 
 
