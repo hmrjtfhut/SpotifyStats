@@ -4,6 +4,7 @@ A Windows app that tracks songs you listen to on Spotify,
 shows album art and has playback controls, and keeps a local database of
 your listening history. No connected account required to get started, just open Spotify and run the app.
 
+# Images
 <img width="1013" height="799" alt="Screenshot 2026-07-16 193323" src="https://github.com/user-attachments/assets/a6c981aa-19db-4daf-ad75-f9c9f60d682d" />
 
 
@@ -37,6 +38,7 @@ Python 3.10 or newer is required.
 | `startup.py` | Windows registry / batch-file run-on-boot helper |
 | `build_exe.py` | Builds a standalone `.exe` with PyInstaller |
 | `nowplaying_server.py` | Standalone HTTP server for the WinRT media session (separate tool, not used by the app directly) |
+| `image_cache.py` | Handles image loading and fetching for the UI |
 
 ---
 
@@ -94,38 +96,16 @@ dependencies and runs on any Windows 10/11 machine without a Python install.
 
 ---
 
-## What changed from the original version
+## What changed from version 1.0
 
-### Bugs fixed
-- **App crashed on startup** — `spotify_listener.py` had an `IndentationError` that
-  prevented the module from loading at all.
-- **Swapped artist / title** — the old code tried to parse the Spotify window title
-  string (`"Song - Artist"`) which guessed wrong frequently.  The new code reads
-  `title` and `artist` as separate fields from the Windows media session API.
-- **Double / triple counted plays** — three data sources (WinRT, Web API, window title)
-  were all running simultaneously and could each trigger a play count for the same
-  song.  Now only one source is active at a time.
-- **UI froze** — the old tracker spawned a fresh thread on every tick (every 0.5 s);
-  those threads piled up.  There is now one persistent polling thread.
-- **`build_exe.py` had a hardcoded personal path** (`C:\Users\Travis\…`) so it
-  failed on every other machine.
 
 ### New features
 - **Album art** — pulled from the Windows media session thumbnail (desktop) or the
   Spotify Web API (remote); displayed as a rounded 96×96 image next to the track.
-- **Live progress bar** — shows playback position and updates every second.
-- **Desktop vs remote badge** — a small pill next to "NOW PLAYING" shows 💻 DESKTOP
-  or 📱 REMOTE so you always know which source is active.
-- **Sortable, searchable tables** — click any column header to sort; type in the
-  search box to filter.
-- **Database editor** — Settings → *Edit Database…* lets you fix or delete
-  individual entries without touching SQLite directly.
-- **Disconnect Spotify account** — Settings → *Disconnect Spotify Account* removes
-  the cached token so you can log in with a different account.
-- **Repeat-one indicator** — the 🔁 button switches to 🔂 when repeat-one is active.
-- **Lyrics removed** — the lyrics overlay existed in the old code but never actually
-  fetched anything; it's been removed to simplify the codebase.
-
+- **More stats** — more in-depth statistics and graphs for plays, minutes, and unique artists.
+- **More Images** — Song cover art for top songs, and added artist pfp
+- **Ui Imporvements** — Added tab elements for ease of use, and added in-depth artist and song info.
+- **Menus** — Added menus when an artist or song is clicked on. Also added menus for minutes, plays, and artists.
 ---
 
 ## Data location
