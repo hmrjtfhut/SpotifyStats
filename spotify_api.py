@@ -19,7 +19,7 @@ except Exception:
     HAS_SPOTIPY = False
 
 _FALLBACK_CLIENT_ID     = "c3fc61202c5e44d28f2f95bcd4bcb147"
-_FALLBACK_CLIENT_SECRET = "TO RUN THIS USE YOUR OWN OR USE THE EXE"
+_FALLBACK_CLIENT_SECRET = "56def4b5946942e49759d1eac74c333d"
 _FALLBACK_REDIRECT_URI  = "http://127.0.0.1:8888/callback"
 DEFAULT_SCOPE   = "user-read-playback-state user-modify-playback-state"
 AUTHORIZE_URL   = "https://accounts.spotify.com/authorize"
